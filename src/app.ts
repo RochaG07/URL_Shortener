@@ -1,44 +1,44 @@
 import express from 'express';
-import { generate } from 'short-uuid';
 
-interface storedURLs{
-    originalURL: string,
-    shortnedURL: string
-}
+import { generate } from 'short-uuid';
+import { createClient } from 'redis';
+
 
 const app = express();
 
 app.use(express.json());
 
 
-const inMemoryURLs: storedURLs[] = [];
+(async () => {
+    const client = createClient();
 
-app.post('/create_shortened_url', (request, response) => {
-    const {originalURL} = request.body;
+    client.on('error', (err) => console.log("Redis client error: ", err))
 
-    const shortnedURL = `${generate()}`;
+    await client.connect();
 
-    // Temp Storing
-    inMemoryURLs.push({
-        originalURL,
-        shortnedURL
+
+    app.post('/create_shortened_url', async (request, response) => {
+        const {originalURL} = request.body;
+    
+        const shortnedURL = `${generate()}`;
+
+        await client.set(shortnedURL, originalURL);
+    
+        return response.status(201).json({shortnedURL});
     });
-
-
-    return response.status(201).json({shortnedURL});
-})
-
-app.get("/:URL", (request, response) => {
-    const {URL} = request.params;
-
-    const foundURL = inMemoryURLs.find(inMemoryURL => inMemoryURL.shortnedURL === URL);
-
-    if(!foundURL) {
-        response.status(404).json({message: "Not found"});
-
-    } else {
-        response.redirect(foundURL.originalURL);
-    }
-})
+    
+    app.get("/:URL", async (request, response) => {
+        const {URL} = request.params;
+    
+        const originalURL = await client.get(URL);
+    
+        if(!originalURL) {
+            response.status(404).json({message: "Not found"});
+    
+        } else {
+            response.redirect(originalURL);
+        }
+    });
+})();
 
 export default app;
